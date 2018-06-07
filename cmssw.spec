@@ -1,13 +1,13 @@
-### RPM cms cmssw CMSSW_10_2_0_pre5
+### RPM cms cmssw CMSSW_10_2_0_pre5_Patatrack
 
 Requires: cmssw-tool-conf python cms-git-tools
 
 %define runGlimpse      yes
 %define saveDeps        yes
-%define branch          master
+%define branch          CMSSW_10_2_X_Patatrack
 %define gitcommit       %{realversion}
 # build with debug symbols, and package them in a separate rpm
-#subpackage debug disabledes
+%define subpackageDebug yes
 
 %if "%(case %realversion in (*_COVERAGE_X*) echo true ;; (*) echo false ;; esac)" == "true"
 %define usercxxflags    -fprofile-arcs -ftest-coverage
@@ -36,7 +36,7 @@ Requires: cmssw-tool-conf python cms-git-tools
 %define extra_tools     llvm-cxxcompiler llvm-f77compiler llvm-ccompiler
 %endif
 
-%define source1         git://github.com/cms-sw/cmssw.git?protocol=https&obj=%{branch}/%{gitcommit}&module=%{cvssrc}&export=%{srctree}&output=/src.tar.gz
+%define source1         git://github.com/cms-patatrack/cmssw.git?protocol=https&obj=%{branch}/%{gitcommit}&module=%{cvssrc}&export=%{srctree}&output=/src.tar.gz
 
 ## IMPORT scram-project-build
 ## SUBPACKAGE debug IF %subpackageDebug
