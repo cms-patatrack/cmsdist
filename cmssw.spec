@@ -1,4 +1,4 @@
-### RPM cms cmssw CMSSW_10_2_0
+### RPM cms cmssw CMSSW_10_2_0_Patatrack
 
 Requires: cmssw-tool-conf python cms-git-tools
 
@@ -36,7 +36,7 @@ Requires: cmssw-tool-conf python cms-git-tools
 %define extra_tools     llvm-cxxcompiler llvm-f77compiler llvm-ccompiler
 %endif
 
-%define source1         git://github.com/cms-sw/cmssw.git?protocol=https&obj=%{branch}/%{gitcommit}&module=%{cvssrc}&export=%{srctree}&output=/src.tar.gz
+%define source1         git://github.com/cms-patatrack/cmssw.git?protocol=https&obj=%{branch}/%{gitcommit}&module=%{cvssrc}&export=%{srctree}&output=/src.tar.gz
 
 ## IMPORT scram-project-build
 ## SUBPACKAGE debug IF %subpackageDebug
