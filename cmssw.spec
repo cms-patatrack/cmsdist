@@ -1,4 +1,4 @@
-### RPM cms cmssw CMSSW_11_0_0_pre7
+### RPM cms cmssw CMSSW_11_0_0_pre7_Patatrack
 
 Requires: cmssw-tool-conf python cms-git-tools cmssw-osenv
 
@@ -11,7 +11,7 @@ Requires: cmssw-tool-conf python cms-git-tools cmssw-osenv
 
 ## INCLUDE cmssw-queue-override
 
-%define source1         git://github.com/cms-sw/cmssw.git?protocol=https&obj=%{branch}/%{gitcommit}&module=%{cvssrc}&export=%{srctree}&output=/src.tar.gz
+%define source1         git://github.com/cms-patatrack/cmssw.git?protocol=https&obj=%{branch}/%{gitcommit}&module=%{cvssrc}&export=%{srctree}&output=/src.tar.gz
 
 ## IMPORT scram-project-build
 ## SUBPACKAGE debug IF %subpackageDebug
