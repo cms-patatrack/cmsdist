@@ -1,0 +1,198 @@
+commit 87b715325a74d34f1331d14d8df640308ec10d12
+Author: Brian Patton <bjp@google.com>
+Date:   Tue Mar 20 06:25:19 2018 -0700
+
+    Adds float64 support for avg pool and its gradient.
+    
+    Eigen NumTraits is modified to directly use std::numeric_limits, which resolves a broken test caused by inconsistency between the host and devices values of Eigen::NumTraits<double>::highest(). This returns +inf on device, due to third_party/eigen3/Eigen/src/Core/util/Meta.h, and __DBL_MAX__ (1.7976931348623157e+308) on host, making the behavior for doubles (on device) inconsistent with both the behavior of floats Eigen::NumTraits<float>::highest() and the behavior of std::numeric_limits<double>::max()
+    
+    PiperOrigin-RevId: 189731521
+
+diff --git a/tensorflow/core/kernels/eigen_pooling.h b/tensorflow/core/kernels/eigen_pooling.h
+index 896c995..2f83780 100644
+--- a/tensorflow/core/kernels/eigen_pooling.h
++++ b/tensorflow/core/kernels/eigen_pooling.h
+@@ -334,7 +334,8 @@ struct AvgPoolMeanReducer {
+   }
+ 
+   template <typename Packet>
+-  void reducePacketWithType(T, const Packet& p, Packet* accum) {
++  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reducePacketWithType(
++      T, const Packet& p, Packet* accum) {
+     Packet skip_mask =
+         pequal(p, pset1<Packet>(-Eigen::NumTraits<T>::highest()));
+     (*accum) = padd<Packet>(*accum, psel(p, pset1<Packet>(0), skip_mask));
+@@ -480,11 +481,9 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
+                              Eigen::type2index<3> > >::type reduction_dims;
+ #endif
+   return input
+-      .extract_image_patches(
+-          patchRows, patchCols, strideRows, strideCols, in_strideRows,
+-          in_strideCols, padding_type,
+-          -Eigen::NumTraits<typename internal::remove_const<
+-              typename internal::traits<Input>::Scalar>::type>::highest())
++      .extract_image_patches(patchRows, patchCols, strideRows, strideCols,
++                             in_strideRows, in_strideCols, padding_type,
++                             -Eigen::NumTraits<CoeffReturnType>::highest())
+       .reduce(reduction_dims, mean_with_nan)
+       .reshape(post_reduce_dims);
+ }
+
+commit ba30ba07b213687d0014a2149963780a26c59e64
+Author: Mark Ryan <mark.d.ryan@intel.com>
+Date:   Thu May 17 18:17:39 2018 +0100
+
+    Fix alignment crashes in AVX512 builds (#19121)
+    
+    * Fix issue #15588 by simplifying the code
+    
+    The allocator.h code tried to be clever and use 32 byte alignment for SSE/AVX2/etc use,
+    and 64 byte alignment for AVX512.
+    
+    Unfortunately, the #ifdef in use (from EIGEN) is not useful; the bazel BUILD files do
+    not propagate the tf_copts() compiler flags when the allocator.cc/allocator.h files get
+    compiled, to EIGEN does not see the actual AVX512 using compiler flags...
+    
+    Rather than changing compiler flag propagation throughout a whole bunch of code,
+    there's an opportunity to just simplify the code and always use 64 byte alignment.
+    Yes it wastes a bit of space, but on the other hand now these allocations are
+    cache line aligned which isn't a bad thing... and an ifdef can be dropped
+    
+    Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+    
+    * Set EIGEN_MAX_ALIGN_BYTES=64
+    
+    This patch sets a 64 byte upper bound on the alignment of memory allocated by
+    eigen.  This is necessary to prevent crashes during the execution of the unit
+    tests when they are compiled with AVX512 support.
+    
+    Signed-off-by: Mark Ryan <mark.d.ryan@intel.com>
+    
+    * Update the tensorflow/compiler/aot tests for 64 byte alignment
+    
+    Modifications to the tensorflow/core/framework/allocator.h to always
+    use 64 byte alignment causes failures in the tensorflow/compiler/aot
+    unit tests.  This patch updates these tests so that they pass with
+    64 byte aligned allocated memory.
+    
+    Signed-off-by: Mark Ryan <mark.d.ryan@intel.com>
+    
+    * Update Tensor.Slice_Basic for 64 byte alignment
+    
+    The test case
+    
+    //tensorflow/core:framework_tensor_test:Tensor.Slice_Basic
+    
+    fails with EIGEN_MAX_ALIGN_BYTES set to 64.  The reason is that the
+    slices it takes of the sample tensor are 32 byte and not 64 byte
+    aligned.  This commit increases one of the dimensions of the original
+    tensor to ensure that the slices taken by the test cases are indeed 64
+    byte aligned.
+    
+    Signed-off-by: Mark Ryan <mark.d.ryan@intel.com>
+    
+    * Update ScopedAllocatorConcatOpTest.Reshape for 64 byte alignment
+    
+    The ScopedAllocatorConcatOpTest.Reshape test requires that the elements
+    of the field_shapes parameter of ExecOp are multiples of
+    Allocator::kAllocatorAlignment in size.  If they are not, the backing
+    tensor allocated by PrepOp will have too many elements and reshaping
+    will fail.  This commit modifies the test case, making the elements
+    64 bytes in size, the new value for Allocator::kAllocatorAlignment.
+    
+    Signed-off-by: Mark Ryan <mark.d.ryan@intel.com>
+
+diff --git a/third_party/eigen.BUILD b/third_party/eigen.BUILD
+index 07bb664..e54c1a4 100644
+--- a/third_party/eigen.BUILD
++++ b/third_party/eigen.BUILD
+@@ -64,6 +64,7 @@ cc_library(
+         # This define (mostly) guarantees we don't link any problematic
+         # code. We use it, but we do not rely on it, as evidenced above.
+         "EIGEN_MPL2_ONLY",
++        "EIGEN_MAX_ALIGN_BYTES=64",
+     ],
+     includes = ["."],
+     visibility = ["//visibility:public"],
+
+commit f84e8257aa88fa45cc7a15835ad386565cd60237
+Author: A. Unique TensorFlower <gardener@tensorflow.org>
+Date:   Fri Jun 1 16:48:10 2018 -0700
+
+    Change the Eigen reduction code to use a tree to improve numerical stability.
+    This changes the InnerMostDimReducer to use a summation tree, which is more numerically stable than the previous approach of sequential addition into an accumulator.
+    This solves the issue for reduction over all or a trailing subset of dimensions.
+    This change does not improve the numerical accuracy for MeanReducer, which maintains state.
+    
+    Benchmarks show a 40% (AVX) to 50% (SSE) slowdown for small row reductions (sum, float). column- and full reductions are unchanged.
+    
+    Cleaned up TensorFunctors.h a bit by moving the traits to reducer_traits and updating the code that uses the reducers accordingly.
+    
+    Introduced a new trait "IsExactlyAssociative" and new template specializations of InnerMostDimReducer to ensure that we only invoke the new and slightly more expensive codepath when it is needed, i.e. for sum reduction of non-integer types.
+    
+    PiperOrigin-RevId: 198946075
+
+diff --git a/tensorflow/core/kernels/eigen_pooling.h b/tensorflow/core/kernels/eigen_pooling.h
+index 2f83780..56de6b1 100644
+--- a/tensorflow/core/kernels/eigen_pooling.h
++++ b/tensorflow/core/kernels/eigen_pooling.h
+@@ -372,16 +372,23 @@ struct reducer_traits<AvgPoolMeanReducer<float>, Device> {
+     Cost = 1,
+ #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
+     // We only support packet access for floats.
+-    PacketAccess = true
++    PacketAccess = true,
+ #else
+-    PacketAccess = false
++    PacketAccess = false,
+ #endif
++    IsStateful = true,
++    IsExactlyAssociative = false
+   };
+ };
+ 
+ template <>
+ struct reducer_traits<AvgPoolMeanReducer<float>, GpuDevice> {
+-  enum { Cost = 1, PacketAccess = false };
++  enum {
++    Cost = 1,
++    PacketAccess = false,
++    IsStateful = true,
++    IsExactlyAssociative = false
++  };
+ };
+ 
+ }  // namespace internal
+
+commit cba65fbcecb828a3e6e7743f7e784c7d08d37ffb
+Author: Eugene Zhulenev <ezhulenev@google.com>
+Date:   Fri Sep 14 12:34:21 2018 -0700
+
+    Define PreferBlockAccess enum to prepare for Eigen upgrade.
+    
+    PiperOrigin-RevId: 213025676
+
+diff --git a/tensorflow/core/kernels/eigen_volume_patch.h b/tensorflow/core/kernels/eigen_volume_patch.h
+index a3d7958..80ab745 100644
+--- a/tensorflow/core/kernels/eigen_volume_patch.h
++++ b/tensorflow/core/kernels/eigen_volume_patch.h
+@@ -43,6 +43,7 @@ struct CustomTensorEvaluator {
+     IsAligned = false,
+     PacketAccess = TensorEvaluator<ArgType, Device>::PacketAccess,
+     BlockAccess = false,
++    PreferBlockAccess = false,
+     Layout = TensorEvaluator<ArgType, Device>::Layout,
+     CoordAccess = NumDims == 6,
+     RawAccess = false
+diff --git a/tensorflow/core/kernels/mirror_pad_op.h b/tensorflow/core/kernels/mirror_pad_op.h
+index cc4b694..62aa7d5 100644
+--- a/tensorflow/core/kernels/mirror_pad_op.h
++++ b/tensorflow/core/kernels/mirror_pad_op.h
+@@ -103,6 +103,7 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
+     IsAligned = false,
+     PacketAccess = TensorEvaluator<ArgType, Device>::PacketAccess,
+     BlockAccess = false,
++    PreferBlockAccess = false,
+     Layout = TensorEvaluator<ArgType, Device>::Layout,
+     CoordAccess = true,
+     RawAccess = false
