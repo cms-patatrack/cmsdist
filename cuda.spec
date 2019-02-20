@@ -1,4 +1,5 @@
 ### RPM external cuda %{fullversion}
+
 %ifarch x86_64
 %define fullversion 10.0.130
 %define cudaversion %(echo %realversion | cut -d. -f 1,2)
