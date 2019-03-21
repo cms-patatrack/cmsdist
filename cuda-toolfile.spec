@@ -34,9 +34,13 @@ cat << \EOF_TOOLFILE >%{i}/etc/scram.d/cuda.xml
     <environment name="LIBDIR"    default="$CUDA_BASE/lib64"/>
     <environment name="INCLUDE"   default="$CUDA_BASE/include"/>
   </client>
+%ifarch aarch64
+  <flags CUDA_FLAGS="-gencode arch=compute_72,code=sm_72"/>
+%else
   <flags CUDA_FLAGS="-gencode arch=compute_60,code=sm_60"/>
   <flags CUDA_FLAGS="-gencode arch=compute_61,code=sm_61"/>
   <flags CUDA_FLAGS="-gencode arch=compute_70,code=sm_70"/>
+%endif
   <flags CUDA_FLAGS="-O3 -std=c++14 --expt-relaxed-constexpr --expt-extended-lambda"/>
   <flags CUDA_FLAGS="--generate-line-info --source-in-ptx"/>
   <flags CUDA_HOST_REM_CXXFLAGS="-std=%"/>
