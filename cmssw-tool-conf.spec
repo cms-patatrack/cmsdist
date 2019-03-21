@@ -163,6 +163,9 @@ Requires: gperftools-toolfile
 
 %if %isnotppc64le_be
 Requires: igprof-toolfile
+Requires: cuda-toolfile
+Requires: cub-toolfile
+Requires: cuda-api-wrappers-toolfile
 %endif
 
 %if %isamd64
@@ -170,9 +173,6 @@ Requires: dmtcp-toolfile
 Requires: tkonlinesw-toolfile
 Requires: oracle-toolfile
 Requires: cms_oracleocci_abi_hack-toolfile
-Requires: cuda-toolfile
-Requires: cub-toolfile
-Requires: cuda-api-wrappers-toolfile
 Requires: intel-vtune
 Requires: openloops-toolfile
 
