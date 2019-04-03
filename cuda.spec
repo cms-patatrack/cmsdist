@@ -1,9 +1,9 @@
 ### RPM external cuda %{fullversion}
 
 %ifarch x86_64
-%define fullversion 10.0.130
+%define fullversion 9.2.148
 %define cudaversion %(echo %realversion | cut -d. -f 1,2)
-%define driversversion 410.48
+%define driversversion 396.37
 %define cudasoversion %{driversversion}
 %define nsightarch linux-desktop-glibc_2_11_3-glx-x64
 %endif
@@ -16,7 +16,8 @@
 %endif
 
 %ifarch x86_64
-Source0: https://developer.nvidia.com/compute/cuda/%{cudaversion}/Prod/local_installers/%{n}_%{realversion}_%{driversversion}_linux
+Source0: https://developer.nvidia.com/compute/cuda/%{cudaversion}/Prod2/local_installers/%{n}_%{realversion}_%{driversversion}_linux
+Source1: https://developer.nvidia.com/compute/cuda/%{cudaversion}/Prod2/patches/1/%{n}_%{realversion}.1_linux
 %endif
 %ifarch aarch64
 Source0: https://patatrack.web.cern.ch/patatrack/files/cuda-repo-l4t-10-0-local-%{realversion}_1.0-1_arm64.deb
@@ -36,11 +37,20 @@ mkdir %_builddir/build %_builddir/tmp
 %ifarch x86_64
 /bin/sh %{SOURCE0} --silent --tmpdir %_builddir/tmp --extract %_builddir/build
 # extracts:
-# %_builddir/build/NVIDIA-Linux-x86_64-410.48.run
-# %_builddir/build/cuda-linux.10.0.130-24817639.run
-# %_builddir/build/cuda-samples.10.0.130-24817639-linux.run
+# %_builddir/build/NVIDIA-Linux-x86_64-396.37.run
+# %_builddir/build/cuda-linux.9.2.148-24330188.run
+# %_builddir/build/cuda-samples.9.2.148-24330188-linux.run
 
 /bin/sh %_builddir/build/%{n}-linux.%{realversion}-*.run -noprompt -nosymlink -tmpdir %_builddir/tmp -prefix %_builddir/build
+
+# Patch 1 (Released Aug 6, 2018)
+# CUDA 9.2 Patch Update: This update includes performance improvements to cuBLAS GEMM APIs and bug fixes for CUPTI and cuda-gdb.
+# See the CUDA 9.2 release notes for more details.
+/bin/sh %{SOURCE1} --silent --accept-eula --tmpdir %_builddir/tmp --installdir %_builddir/build
+rm -f %_builddir/build/lib64/libcublas.so.9.2.148
+rm -f %_builddir/build/lib64/libnvblas.so.9.2.148
+rm -f %_builddir/build/lib64/libcuinj64.so.9.2.148
+rm -f %_builddir/build/extras/CUPTI/lib64/libcupti.so.9.2.148
 %endif
 %ifarch aarch64
 # extract the individual .deb archives from the repository into
@@ -62,9 +72,10 @@ mkdir -p %{i}/include
 mkdir -p %{i}/lib64
 mkdir -p %{i}/share
 
-# package only the runtime static libraries
+# package only runtime and device static libraries
 mv %_builddir/build/lib64/libcudart_static.a %{i}/lib64/
 mv %_builddir/build/lib64/libcudadevrt.a %{i}/lib64/
+mv %_builddir/build/lib64/lib*_device.a %{i}/lib64/
 rm -f %_builddir/build/lib64/lib*.a
 
 # do not package dynamic libraries for which there are stubs
@@ -101,21 +112,6 @@ rm -f %_builddir/build/bin/computeprof
 
 # leave out the CUDA samples
 rm -f %_builddir/build/bin/cuda-install-samples-%{cudaversion}.sh
-
-# package the Nsight Compute command line tool
-mkdir %{i}/NsightCompute-1.0
-mv %_builddir/build/NsightCompute-1.0/target                  %{i}/NsightCompute-1.0/
-%ifarch x86_64
-mv %_builddir/build/NsightCompute-1.0/ProfileSectionTemplates %{i}/NsightCompute-1.0/
-%endif
-%ifarch aarch64
-mv %_builddir/build/NsightCompute-1.0/host                    %{i}/NsightCompute-1.0/
-%endif
-cat > %{i}/bin/nv-nsight-cu-cli <<@EOF
-#! /bin/bash
-exec %{i}/NsightCompute-1.0/target/%{nsightarch}/nv-nsight-cu-cli "\$@"
-@EOF
-chmod a+x %{i}/bin/nv-nsight-cu-cli
 
 # package the cuda-gdb support files, and rename the binary to use it via a wrapper
 mv %_builddir/build/share/gdb/ %{i}/share/
@@ -162,5 +158,4 @@ sed \
   -i $RPM_INSTALL_PREFIX/%{pkgrel}/bin/nvcc.profile
 
 # relocate the paths inside bin/nv-nsight-cu-cli
-%{relocateConfig}bin/nv-nsight-cu-cli
 %{relocateConfig}bin/cuda-gdb
