@@ -36,7 +36,6 @@ cat << \EOF_TOOLFILE >%{i}/etc/scram.d/cuda.xml
   </client>
 %ifarch x86_64
   <flags CUDA_FLAGS="-gencode arch=compute_60,code=sm_60"/>
-  <flags CUDA_FLAGS="-gencode arch=compute_61,code=sm_61"/>
   <flags CUDA_FLAGS="-gencode arch=compute_70,code=sm_70"/>
 %endif
 %ifarch aarch64
